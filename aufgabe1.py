@@ -1,128 +1,112 @@
 from typing import List, Any
 from queue import Queue
 from PIL import Image
+import numpy as np
 
 
-class Matrix:
-    """
-    Utility class to make working with matrices easier
-    """
-
-    def __init__(self, data: List[List[Any]]):
-        self._data = data
-
-    def __getitem__(self, idx):
-        a, b = idx
-        return self._data[a][b]
-
-    def __setitem__(self, key, value):
-        a, b = key
-        self._data[a][b] = value
-
-    def size(self):
-        return len(self._data), len(self._data[0])
-
-    def __repr__(self):
-        return f'Matrix()'
+class TileColor:
+    # Define the colors for each tile type
+    WALL = (0, 0, 0, 255)
+    OUTSIDE = (255, 255, 255, 0)
+    FLOOR = (200, 113, 55, 255)
+    TEA_KITCHEN = (0, 0, 255, 255)
+    PROFESSOR_OFFICE = (0, 255, 0, 255)
+    LABOR = (255, 255, 0, 255)
 
 
-# Define the colors for each tile type
-wall = (0, 0, 0, 255)
-outside = (255, 255, 255, 0)
-floor = (200, 113, 55, 255)
-tea_kitchen = (0, 0, 255, 255)
-professor_office = (0, 255, 0, 255)
-labor = (255, 255, 0, 255)
+class TileType:
+    WALL = 'wall'
+    OUTSIDE = 'outside'
+    FLOOR = 'floor'
+    TEA_KITCHEN = 'tea_kitchen'
+    PROFESSOR_OFFICE = 'professor_offic'
+    LABOR = 'labor'
+
+    @staticmethod
+    def of(pixel: tuple):
+        """
+        Pixel to tile type
+        """
+
+        return {
+            TileColor.WALL: TileType.WALL,
+            TileColor.OUTSIDE: TileType.OUTSIDE,
+            TileColor.FLOOR: TileType.FLOOR,
+            TileColor.TEA_KITCHEN: TileType.TEA_KITCHEN,
+            TileColor.PROFESSOR_OFFICE: TileType.PROFESSOR_OFFICE,
+            TileColor.LABOR: TileType.PROFESSOR_OFFICE,
+        }[pixel]
 
 
-def get_square_type(pixel: tuple):
-    """
-    Returns the tile type for each tile as string
-    """
-
-    return {
-        wall: 'wall',
-        outside: 'outside',
-        floor: 'floor',
-        tea_kitchen: 'tea_kitchen',
-        professor_office: 'professor_office',
-        labor: 'labor'
-    }[pixel]
-
-
-def parse_image():
+def parse_image() -> np.matrix:
     """
     Parses the image and creates a matrix of tile types.
     """
-
+    cell_cnt = 21
     img = Image.open('lageplan.png')
-    cell_size = 420 / 21
+    cell_size = 420 / cell_cnt
     plan_matrix = list()
 
-    for i in range(20):
+    for i in range(cell_cnt):
         row = list()
-        for j in range(20):
+        for j in range(cell_cnt):
             # Get one pixel for each tile. x, y have an offset of 10 to get the color of the tile
             # and not of the border
             pixel = img.getpixel((int(i * cell_size + 10), int(j * cell_size + 10)))
-            row.append(get_square_type(pixel))
+            row.append(TileType.of(pixel))
         plan_matrix.append(row)
 
     img.close()
-    return Matrix(plan_matrix)
+    return np.matrix(plan_matrix)
 
 
 # --- Aufgabe a ---
-matrix = parse_image()
-mx, my = matrix.size()
+plan_matrix = parse_image()
+mx, my = plan_matrix.shape
 
 # --- Aufgabe b ---
 start = (3, 17)
 end = (1, 3)
-adj_vec = [(-1, 0), (0, 1), (1, 0), (0, -1)]    # For finding adjacent fields
-# Elements: (prev_point, dist)
-# An entry in this matrix also marks the tile as visited
-prev_matrix = Matrix([[(None, None) for _ in range(my)] for _ in range(mx)])
-prev_matrix[start] = (start, 0)
-queue = Queue()   # Keep track of tiles to process
-queue.put((*start, 0))
+adj_vectors = [(-1, 0), (0, 1), (1, 0), (0, -1)]    # For finding adjacent fields
+queue = Queue()
+queue.put(start)
+# Make the path is reconstructable
+previous_matrix = np.array([[(None, None) for _ in range(21)] for _ in range(21)])
+visited = set()   # Store already visited nodes, otherwise performance is terrible
 
 while not queue.empty():
-    x, y, dist = queue.get()
+    node_x, node_y = queue.get()
+    visited.add((node_x, node_y))
 
     # Enqueue neighbours
-    for ox, oy in adj_vec:
-        xn, yn = x + ox, y + oy
-        # Check if coords are valid
-        if xn >= mx or yn >= my or xn < 0 or yn < 0:
+    for adj_vec in adj_vectors:
+        next_x, next_y = node_x + adj_vec[0], node_y + adj_vec[1]
+
+        # Don't re-visit
+        if (next_x, next_y) in visited:
             continue
 
-        # Don't revisit
-        if (prev_point_dist := prev_matrix[xn, yn]) != (None, None):
-            # Check if a shorter path to a visited tile was found
-            if prev_point_dist[1] > dist + 1:
-                prev_matrix[xn, yn] = ((x, y), dist + 1)
+        # Check if node is in range
+        if next_x < 0 or next_x > mx or next_y < 0 or next_y > my:
             continue
 
         # Don't go through walls
-        if matrix[xn, yn] == 'wall':
+        node_type = plan_matrix[next_x, next_y]
+        if node_type == TileType.WALL:
             continue
 
-        queue.put((xn, yn, dist + 1))
-        prev_matrix[xn, yn] = ((x, y), dist + 1)
+        queue.put((next_x, next_y))
+        previous_matrix[next_x][next_y] = np.array((node_x, node_y))
 
-    # Process the current point
-    prev_point, prev_dist = prev_matrix[x, y]
-    print(f'({prev_point[0]:0>2},{prev_point[1]:0>2}) -{dist:0>2}-> ({x:0>2}, {y:0>2})')
+    if (node_x, node_y) == end:   # Stop when target is reached
+        break
 
-
-# Go backwards from end to start to build the shortest path
+# Reconstruct the path using the previous_matrix
 path = list()
 point = end
 while point != start:
     path.insert(0, point)
-    prev_point, prev_dist = prev_matrix[point]
-    point = prev_point
+    point = tuple(previous_matrix[point])
 path.insert(0, start)
 
 print(f'Shortest path ({len(path)} steps): {" -> ".join(map(str, path))}')
