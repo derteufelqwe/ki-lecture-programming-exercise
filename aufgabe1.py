@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Any, Optional
 from queue import Queue, PriorityQueue
 from PIL import Image
 import numpy as np
@@ -66,6 +66,31 @@ class TileCost:
         }[tile]
 
 
+class Node:
+    """
+    To build a search tree
+    """
+
+    def __init__(self, parent: Optional['Node'], position):
+        self.parent = parent
+        self.position = position
+        self.children = list()
+
+    def add_child(self, node):
+        self.children.append(node)
+
+    def __gt__(self, other):
+        """ Must be comparable for the priority queue """
+        return 0
+
+    def __lt__(self, other):
+        """ Must be comparable for the priority queue """
+        return 0
+
+    def __repr__(self):
+        return f'Node({self.position})'
+
+
 def parse_image() -> np.matrix:
     """
     Parses the image and creates a matrix of tile types.
@@ -103,6 +128,7 @@ def breadth_first_search():
     # Make the path is reconstructable
     previous_matrix = np.array([[(None, None) for _ in range(21)] for _ in range(21)])
     visited = set()   # Store already visited nodes, otherwise performance is terrible
+    cnt = 0
 
     while not queue.empty():
         node_x, node_y = queue.get()
@@ -128,6 +154,9 @@ def breadth_first_search():
             queue.put((next_x, next_y))
             previous_matrix[next_x][next_y] = np.array((node_x, node_y))
 
+        # print(f"{cnt}: {(node_x, node_y)}")
+        cnt += 1
+
         if (node_x, node_y) == end:   # Stop when target is reached
             break
 
@@ -139,9 +168,12 @@ def breadth_first_search():
         point = tuple(previous_matrix[point])
     path.insert(0, start)
 
-    print(f'Shortest path ({len(path)} steps): {" -> ".join(map(str, path))}')
+    print(f'Searched nodes : {cnt}')
+    print(f'Solution length: {len(path)}')
+    print(f'Shortest path  : ' + " -> ".join(map(str, path)))
 
 
+# --- Aufgabe c ---
 def a_star_heuristic(pos: tuple, end: tuple):
     """
     Goes directly to the end position and measures the distance.
@@ -171,21 +203,23 @@ def a_star_heuristic(pos: tuple, end: tuple):
     return cost
 
 
-# --- Aufgabe c ---
 def a_star_search():
     start = (3, 17)
     end = (1, 3)
     adj_vectors = [(-1, 0), (0, 1), (1, 0), (0, -1)]  # For finding adjacent fields
+    root = Node(None, start)
     queue = PriorityQueue()
-    queue.put((0 + a_star_heuristic(start, end), start, 0))
-    previous_matrix = np.array([[(None, None) for _ in range(21)] for _ in range(21)])
+    # Queue elements: (Estimated Cost, node, current cost)
+    queue.put((0 + a_star_heuristic(start, end), root, 0))
+    cnt = 0
 
     while not queue.empty():
-        _, (node_x, node_y), current_cost = queue.get()
+        _, node, current_cost = queue.get()
+        node_pos_x, node_pos_y = node.position
 
         # Enqueue neighbours
         for adj_vec in adj_vectors:
-            next_x, next_y = node_x + adj_vec[0], node_y + adj_vec[1]
+            next_x, next_y = node_pos_x + adj_vec[0], node_pos_y + adj_vec[1]
 
             # Check if node is in range
             if next_x < 0 or next_x > mx or next_y < 0 or next_y > my:
@@ -197,26 +231,40 @@ def a_star_search():
                 continue
 
             tile_cost = TileCost.of(node_type)
-            queue.put((current_cost + a_star_heuristic((next_x, next_y), end), (next_x, next_y), current_cost + tile_cost))
+            child_node = Node(node, (next_x, next_y))
+            node.add_child(child_node)
+            queue.put((
+                current_cost + a_star_heuristic((next_x, next_y), end),  # Estimated cost
+                child_node,     # The node
+                current_cost + tile_cost    # Current cost
+            ))
 
-            previous_matrix[next_x][next_y] = np.array((node_x, node_y))
+        # print(f'{cnt}: {node}')
+        cnt += 1
 
-        print(f'({node_x:0>2},{node_y:0>2})')
-
-        if (node_x, node_y) == end:   # Stop when target is reached
+        if (node_pos_x, node_pos_y) == end:   # Stop when target is reached
             break
 
-    # Reconstruct the path using the previous_matrix
     path = list()
-    point = end
-    while point != start:
-        path.insert(0, point)
-        point = tuple(previous_matrix[point])
-    path.insert(0, start)
+    parent = node
+    while parent is not None:
+        path.insert(0, parent)
+        parent = parent.parent
 
-    print(f'Shortest path ({len(path)} steps): {" -> ".join(map(str, path))}')
+    print(f'Searched nodes : {cnt}')
+    print(f'Solution length: {len(path)}')
+    print(f'Shortest path  : ' + ' -> '.join(map(str, [n.position for n in path])))
 
+    return
+
+
+print('--- BFS ---')
+breadth_first_search()
+print()
+
+print('--- A* ---')
 a_star_search()
+print()
 
 
 print('Done')
