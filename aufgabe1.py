@@ -1,11 +1,14 @@
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Tuple
 from queue import Queue, PriorityQueue
 from PIL import Image
 import numpy as np
 
 
 class TileColor:
-    # Define the colors for each tile type
+    """
+    Defines the colors for each tile type
+    """
+
     WALL = (0, 0, 0, 255)
     OUTSIDE = (255, 255, 255, 0)
     FLOOR = (200, 113, 55, 255)
@@ -15,6 +18,10 @@ class TileColor:
 
 
 class TileType:
+    """
+    The string representation for each tile
+    """
+
     WALL = 'wall'
     OUTSIDE = 'outside'
     FLOOR = 'floor'
@@ -40,7 +47,7 @@ class TileType:
 
 class TileCost:
     """
-    Cost for A* algorithm
+    Tile costs for the algorithms
     """
 
     WALL = 1
@@ -68,27 +75,139 @@ class TileCost:
 
 class Node:
     """
-    To build a search tree
+    To build a search tree.
+    The cost parameter is used to order the nodes in the priority queue.
+    In case of A* this must contain the already accumulated cost + the heuristics expected cost.
     """
 
-    def __init__(self, parent: Optional['Node'], position):
+    def __init__(self, parent: Optional['Node'], position: Tuple[int, int], cost=0, **kwargs):
         self.parent = parent
         self.position = position
         self.children = list()
+        self.cost = cost
+        self.additional_data = dict(kwargs)
 
     def add_child(self, node):
+        """ Adds a new child to the node """
         self.children.append(node)
 
-    def __gt__(self, other):
+    def __gt__(self, other: 'Node'):
         """ Must be comparable for the priority queue """
-        return 0
+        return self.cost > other.cost
 
-    def __lt__(self, other):
+    def __lt__(self, other: 'Node'):
         """ Must be comparable for the priority queue """
-        return 0
+        return self.cost < other.cost
+
+    def __eq__(self, o: 'Node') -> bool:
+        """ Simple equality comparison """
+        if not isinstance(o, Node):
+            return False
+
+        return self.position == o.position and self.parent == o.parent and self.cost == o.cost
 
     def __repr__(self):
         return f'Node({self.position})'
+
+
+class NodeIterator:
+    """
+    Provides the basic structure for the graph search algorithms
+    """
+
+    ADJ_VECTORS = [(-1, 0), (0, 1), (1, 0), (0, -1)]  # For finding adjacent fields
+    START = (3, 17)
+    END = (1, 3)
+    MX = 21
+    MY = 21
+
+    def __init__(self, allow_revisit=False, print_stats=True, allow_go_back=False):
+        """
+        :param allow_revisit: If True, tiles can be visited multiple times
+        :param print_stats  : If True, prints some search stats in the end of execution
+        :param allow_go_back: If True, allows visiting the parent node
+        """
+
+        self._queue: PriorityQueue[Node] = PriorityQueue()
+        self._allow_revisit = allow_revisit
+        self._print_stats = print_stats
+        self._allow_go_back = allow_go_back
+        self.root = Node(None, self.START)
+        self._visited = set()
+        self._plan_matrix = parse_image()
+
+    def run(self) -> Tuple[int, List[Node]]:
+        """
+        Performs the graph search
+        :return: (Amount of visited nodes, The calculated path)
+        """
+
+        cnt = 0     # Amount of visited nodes
+        self._queue.put(self.modify_new_node(self.root))
+        # noinspection PyTypeChecker
+        node: Node = None
+
+        while not self._queue.empty():
+            node = self._queue.get()
+            node_x, node_y = node.position
+
+            if not self._allow_revisit:
+                self._visited.add(node.position)
+
+            # Enqueue neighbours
+            for adj_vec in self.ADJ_VECTORS:
+                next_x, next_y = node_x + adj_vec[0], node_y + adj_vec[1]
+
+                # Don't re-visit
+                if not self._allow_revisit and (next_x, next_y) in self._visited:
+                    continue
+
+                # Don't visit parent
+                if not self._allow_go_back and node.parent and node.parent.position == (next_x, next_y):
+                    continue
+
+                # Check if node is in range
+                if next_x < 0 or next_x > self.MX or next_y < 0 or next_y > self.MY:
+                    continue
+
+                # Don't go through walls
+                node_type = self._plan_matrix[next_x, next_y]
+                if node_type == TileType.WALL:
+                    continue
+
+                child_node = self.modify_new_node(Node(node, (next_x, next_y)))
+                node.add_child(child_node)
+                self._queue.put(child_node)
+
+            cnt += 1
+
+            # Stop when target is reached
+            if (node_x, node_y) == self.END:
+                break
+
+        # Construct the path from start to finish
+        path = list()
+        parent = node
+        while parent is not None:
+            path.insert(0, parent)
+            parent = parent.parent
+
+        if self._print_stats:
+            print(f'Searched nodes : {cnt}')
+            print(f'Solution length: {len(path)}')
+            print(f'Shortest path  : ' + ' -> '.join(map(str, [n.position for n in path])))
+
+        return cnt, path
+
+    def modify_new_node(self, node: Node) -> Node:
+        """
+        This method can be overridden by subclasses to modify newly created / visited nodes.
+        This is mainly used to define the nodes cost.
+        """
+        return node
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}()'
 
 
 def parse_image() -> np.matrix:
@@ -113,77 +232,18 @@ def parse_image() -> np.matrix:
     return np.matrix(plan_matrix)
 
 
-# --- Aufgabe a ---
-plan_matrix = parse_image()
-mx, my = plan_matrix.shape
-
-
-# --- Aufgabe b ---
-def breadth_first_search():
-    start = (3, 17)
-    end = (1, 3)
-    adj_vectors = [(-1, 0), (0, 1), (1, 0), (0, -1)]    # For finding adjacent fields
-    queue = Queue()
-    queue.put(start)
-    # Make the path is reconstructable
-    previous_matrix = np.array([[(None, None) for _ in range(21)] for _ in range(21)])
-    visited = set()   # Store already visited nodes, otherwise performance is terrible
-    cnt = 0
-
-    while not queue.empty():
-        node_x, node_y = queue.get()
-        visited.add((node_x, node_y))
-
-        # Enqueue neighbours
-        for adj_vec in adj_vectors:
-            next_x, next_y = node_x + adj_vec[0], node_y + adj_vec[1]
-
-            # Don't re-visit
-            if (next_x, next_y) in visited:
-                continue
-
-            # Check if node is in range
-            if next_x < 0 or next_x > mx or next_y < 0 or next_y > my:
-                continue
-
-            # Don't go through walls
-            node_type = plan_matrix[next_x, next_y]
-            if node_type == TileType.WALL:
-                continue
-
-            queue.put((next_x, next_y))
-            previous_matrix[next_x][next_y] = np.array((node_x, node_y))
-
-        # print(f"{cnt}: {(node_x, node_y)}")
-        cnt += 1
-
-        if (node_x, node_y) == end:   # Stop when target is reached
-            break
-
-    # Reconstruct the path using the previous_matrix
-    path = list()
-    point = end
-    while point != start:
-        path.insert(0, point)
-        point = tuple(previous_matrix[point])
-    path.insert(0, start)
-
-    print(f'Searched nodes : {cnt}')
-    print(f'Solution length: {len(path)}')
-    print(f'Shortest path  : ' + " -> ".join(map(str, path)))
-
-
-# --- Aufgabe c ---
-def a_star_heuristic(pos: tuple, end: tuple):
+def manhattan_heuristic(plan_matrix: np.matrix, pos: tuple, end: tuple):
     """
-    Goes directly to the end position and measures the distance.
+    Goes directly to the end position and measures the cost of each visited tile.
     The heuristic is valid and consistent.
+
+    :param plan_matrix: The location plan
     :param pos: Current position
     :param end: Target position
     :return: The cost
     """
-    sign = lambda x: -1 if x < 0 else 1
 
+    sign = lambda x: -1 if x < 0 else 1
     cost = 0
     point = pos
 
@@ -203,67 +263,64 @@ def a_star_heuristic(pos: tuple, end: tuple):
     return cost
 
 
-def a_star_search():
-    start = (3, 17)
-    end = (1, 3)
-    adj_vectors = [(-1, 0), (0, 1), (1, 0), (0, -1)]  # For finding adjacent fields
-    root = Node(None, start)
-    queue = PriorityQueue()
-    # Queue elements: (Estimated Cost, node, current cost)
-    queue.put((0 + a_star_heuristic(start, end), root, 0))
-    cnt = 0
+class BFSNodeIterator(NodeIterator):
+    """
+    Does Breadth-first search
+    """
 
-    while not queue.empty():
-        _, node, current_cost = queue.get()
-        node_pos_x, node_pos_y = node.position
+    def modify_new_node(self, node: Node) -> Node:
+        """
+        Not adding any cost will result in the nodes getting processed in insertion order
+        """
+        return node
 
-        # Enqueue neighbours
-        for adj_vec in adj_vectors:
-            next_x, next_y = node_pos_x + adj_vec[0], node_pos_y + adj_vec[1]
 
-            # Check if node is in range
-            if next_x < 0 or next_x > mx or next_y < 0 or next_y > my:
-                continue
+class AStarNodeIterator(NodeIterator):
+    """
+    Does A* serach
+    """
 
-            # Don't go through walls
-            node_type = plan_matrix[next_x, next_y]
-            if node_type == TileType.WALL:
-                continue
+    def modify_new_node(self, node: Node) -> Node:
+        """
+        Get the currently used cost (from the parent node) and add the expected cost (from the heuristic)
+        to create this nodes cost.
+        Note: 'node.cost' is the cost used by the algorithm and not the cost of the path to the node.
+        """
 
-            tile_cost = TileCost.of(node_type)
-            child_node = Node(node, (next_x, next_y))
-            node.add_child(child_node)
-            queue.put((
-                current_cost + a_star_heuristic((next_x, next_y), end),  # Estimated cost
-                child_node,     # The node
-                current_cost + tile_cost    # Current cost
-            ))
+        current_cost = node.parent.additional_data.get('current_cost', 0) if node.parent else 0
+        node.cost = current_cost + manhattan_heuristic(self._plan_matrix, node.position, self.END)
+        node.additional_data['current_cost'] = current_cost + TileCost.of(self._plan_matrix[node.position])
+        return node
 
-        # print(f'{cnt}: {node}')
-        cnt += 1
 
-        if (node_pos_x, node_pos_y) == end:   # Stop when target is reached
-            break
+class GreedyBestFirstSearchNodeIterator(NodeIterator):
+    """
+    Does Greedy-best-first search
+    """
 
-    path = list()
-    parent = node
-    while parent is not None:
-        path.insert(0, parent)
-        parent = parent.parent
+    def modify_new_node(self, node: Node) -> Node:
+        """
+        Just uses the heuristic as cost
+        """
 
-    print(f'Searched nodes : {cnt}')
-    print(f'Solution length: {len(path)}')
-    print(f'Shortest path  : ' + ' -> '.join(map(str, [n.position for n in path])))
-
-    return
+        node.cost = manhattan_heuristic(self._plan_matrix, node.position, self.END)
+        node.cost = 0
+        return node
 
 
 print('--- BFS ---')
-breadth_first_search()
+bfs = BFSNodeIterator(allow_revisit=False, print_stats=True)
+cnt1, path1 = bfs.run()
 print()
 
 print('--- A* ---')
-a_star_search()
+astar = AStarNodeIterator(allow_revisit=True, print_stats=True)
+cnt2, path2 = astar.run()
+print()
+
+print('--- Greedy-Best-First Search ---')
+greedy = GreedyBestFirstSearchNodeIterator(allow_revisit=True, print_stats=True)
+cnt3, path3 = greedy.run()
 print()
 
 
