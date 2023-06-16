@@ -9,7 +9,6 @@ import numpy as np
 
 
 ROW_COL_CNT = 21
-global SPILLED
 SPILLED = False
 
 
@@ -159,7 +158,7 @@ class NodeIterator:
         while not self._queue.empty():
             node = self._queue.get()
             node_x, node_y = node.position
-            print(node)
+            # print(node)
 
             if not self._allow_revisit:
                 self._visited.add(node.position)
@@ -349,30 +348,34 @@ def draw_on_image(path: List[Node]):
 
 
 # Aufgabe b
-#print('--- BFS ---')
-#bfs = BFSNodeIterator(allow_revisit=False, print_stats=True)
-#bfs.run()
-#print()
+print('--- BFS ---')
+bfs = BFSNodeIterator(allow_revisit=False, print_stats=True)
+_, path = bfs.run()
+# draw_on_image(path)
+print()
 
 # Aufgabe c
-#print('--- A* ---')
-#astar = AStarNodeIterator(allow_revisit=True, print_stats=True)
-#_, path = astar.run()
+print('--- A* ---')
+astar = AStarNodeIterator(print_stats=True)
+_, path = astar.run()
 # draw_on_image(path)
-#print()
+print()
 
 # Aufgabe d
-#print('--- Greedy-Best-First Search ---')
-#greedy = GreedyBestFirstSearchNodeIterator(allow_revisit=True, print_stats=True)
-#greedy.run()
-#print()
+print('--- Greedy-Best-First Search ---')
+greedy = GreedyBestFirstSearchNodeIterator(allow_revisit=True, print_stats=True)
+_, path = greedy.run()
+# draw_on_image(path)
+print()
 
 # Aufgabe e
 SPILLED = True
+
 #print('--- BFS 2 ---')
-#bfs = BFSNodeIterator(allow_revisit=False, print_stats=True)
-#bfs.run()
-#print()
+bfs = BFSNodeIterator(allow_revisit=False, print_stats=True)
+_, path = bfs.run()
+# draw_on_image(path)
+print()
 
 # Aufgabe c
 print('--- A* 2 ---')

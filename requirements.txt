@@ -4,3 +4,6 @@ numpy
 matplotlib
 pandas
 jupyter
+scikit-learn
+scipy
+Pillow
