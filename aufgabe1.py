@@ -1,7 +1,16 @@
+import math
 from typing import List, Any, Optional, Tuple
 from queue import Queue, PriorityQueue
-from PIL import Image
+from PIL import Image, ImageDraw
 import numpy as np
+
+# (3, 17) -> (2, 17) -> (1, 17) -> (1, 16) -> (1, 15) -> (1, 14) -> (1, 13) -> (2, 13) -> (3, 13) -> (3, 12) -> (3, 11) -> (3, 10) -> (3, 9) -> (3, 8) -> (3, 7) -> (3, 6) -> (3, 5) -> (3, 4) -> (3, 3) -> (2, 3) -> (1, 3)
+# (3, 17) -> (2, 17) -> (1, 17) -> (1, 16) -> (1, 15) -> (1, 14) -> (1, 13) -> (2, 13) -> (3, 13) -> (3, 12) -> (3, 11) -> (3, 10) -> (3, 9) -> (3, 8) -> (3, 7) -> (2, 7) -> (1, 7) -> (1, 6) -> (1, 5) -> (1, 4) -> (1, 3)
+
+
+ROW_COL_CNT = 21
+global SPILLED
+SPILLED = False
 
 
 class TileColor:
@@ -107,7 +116,7 @@ class Node:
         return self.position == o.position and self.parent == o.parent and self.cost == o.cost
 
     def __repr__(self):
-        return f'Node({self.position})'
+        return f'Node({self.position}, {self.cost})'
 
 
 class NodeIterator:
@@ -118,8 +127,8 @@ class NodeIterator:
     ADJ_VECTORS = [(-1, 0), (0, 1), (1, 0), (0, -1)]  # For finding adjacent fields
     START = (3, 17)
     END = (1, 3)
-    MX = 21
-    MY = 21
+    MX = ROW_COL_CNT
+    MY = ROW_COL_CNT
 
     def __init__(self, allow_revisit=False, print_stats=True, allow_go_back=False):
         """
@@ -150,6 +159,7 @@ class NodeIterator:
         while not self._queue.empty():
             node = self._queue.get()
             node_x, node_y = node.position
+            print(node)
 
             if not self._allow_revisit:
                 self._visited.add(node.position)
@@ -214,14 +224,14 @@ def parse_image() -> np.matrix:
     """
     Parses the image and creates a matrix of tile types.
     """
-    cell_cnt = 21
+
     img = Image.open('lageplan.png')
-    cell_size = 420 / cell_cnt
+    cell_size = 420 / ROW_COL_CNT
     plan_matrix = list()
 
-    for i in range(cell_cnt):
+    for i in range(ROW_COL_CNT):
         row = list()
-        for j in range(cell_cnt):
+        for j in range(ROW_COL_CNT):
             # Get one pixel for each tile. x, y have an offset of 10 to get the color of the tile
             # and not of the border
             pixel = img.getpixel((int(i * cell_size + 10), int(j * cell_size + 10)))
@@ -230,6 +240,13 @@ def parse_image() -> np.matrix:
 
     img.close()
     return np.matrix(plan_matrix)
+
+
+def get_cost(plan_matrix: np.matrix, point: Tuple[int, int]) -> int:
+    if SPILLED and point[0] == 3 and 3 <= point[1] <= 14:
+        return 20
+    else:
+        return TileCost.of(plan_matrix[point])
 
 
 def manhattan_heuristic(plan_matrix: np.matrix, pos: tuple, end: tuple):
@@ -242,6 +259,8 @@ def manhattan_heuristic(plan_matrix: np.matrix, pos: tuple, end: tuple):
     :param end: Target position
     :return: The cost
     """
+
+    return abs(end[0] - pos[0]) + abs(end[1] - pos[1]) * 5
 
     sign = lambda x: -1 if x < 0 else 1
     cost = 0
@@ -258,7 +277,7 @@ def manhattan_heuristic(plan_matrix: np.matrix, pos: tuple, end: tuple):
             y_increment = sign(y_diff)
             point = (point[0], point[1] + y_increment)
 
-        cost += TileCost.of(plan_matrix[point])
+        cost += get_cost(plan_matrix, point)
 
     return cost
 
@@ -280,6 +299,9 @@ class AStarNodeIterator(NodeIterator):
     Does A* serach
     """
 
+    def __init__(self, print_stats=True):
+        super().__init__(True, print_stats, False)
+
     def modify_new_node(self, node: Node) -> Node:
         """
         Get the currently used cost (from the parent node) and add the expected cost (from the heuristic)
@@ -289,7 +311,7 @@ class AStarNodeIterator(NodeIterator):
 
         current_cost = node.parent.additional_data.get('current_cost', 0) if node.parent else 0
         node.cost = current_cost + manhattan_heuristic(self._plan_matrix, node.position, self.END)
-        node.additional_data['current_cost'] = current_cost + TileCost.of(self._plan_matrix[node.position])
+        node.additional_data['current_cost'] = current_cost + get_cost(self._plan_matrix, node.position)
         return node
 
 
@@ -304,24 +326,59 @@ class GreedyBestFirstSearchNodeIterator(NodeIterator):
         """
 
         node.cost = manhattan_heuristic(self._plan_matrix, node.position, self.END)
-        node.cost = 0
         return node
 
 
-print('--- BFS ---')
-bfs = BFSNodeIterator(allow_revisit=False, print_stats=True)
-cnt1, path1 = bfs.run()
-print()
+def draw_on_image(path: List[Node]):
+    """
+    Draws the taken path onto the input image
+    """
 
-print('--- A* ---')
-astar = AStarNodeIterator(allow_revisit=True, print_stats=True)
-cnt2, path2 = astar.run()
-print()
+    img = Image.open('lageplan.png')
+    draw = ImageDraw.Draw(img)
 
-print('--- Greedy-Best-First Search ---')
-greedy = GreedyBestFirstSearchNodeIterator(allow_revisit=True, print_stats=True)
-cnt3, path3 = greedy.run()
-print()
+    cell_size = 420 / ROW_COL_CNT
 
+    for node in path:
+        point = node.position
+        x = point[0] * cell_size + 4
+        y = point[1] * cell_size + 4
+        draw.ellipse((x, y, x + 11, y + 11), fill='white', outline='blue')
+
+    img.show()
+
+
+# Aufgabe b
+#print('--- BFS ---')
+#bfs = BFSNodeIterator(allow_revisit=False, print_stats=True)
+#bfs.run()
+#print()
+
+# Aufgabe c
+#print('--- A* ---')
+#astar = AStarNodeIterator(allow_revisit=True, print_stats=True)
+#_, path = astar.run()
+# draw_on_image(path)
+#print()
+
+# Aufgabe d
+#print('--- Greedy-Best-First Search ---')
+#greedy = GreedyBestFirstSearchNodeIterator(allow_revisit=True, print_stats=True)
+#greedy.run()
+#print()
+
+# Aufgabe e
+SPILLED = True
+#print('--- BFS 2 ---')
+#bfs = BFSNodeIterator(allow_revisit=False, print_stats=True)
+#bfs.run()
+#print()
+
+# Aufgabe c
+print('--- A* 2 ---')
+astar = AStarNodeIterator(print_stats=True)
+_, path = astar.run()
+draw_on_image(path)
+print()
 
 print('Done')
