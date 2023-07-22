@@ -18,5 +18,5 @@
 - [x] Exercise 3a
 - [x] Exercise 3b
 - [x] Exercise 3c
-- [ ] Exercise 3d
-- [ ] Exercise 3de
+- [x] Exercise 3d
+- [x] Exercise 3de

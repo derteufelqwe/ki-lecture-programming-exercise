@@ -18,17 +18,81 @@ Tutorial source: https://towardsdatascience.com/a-practical-guide-to-implementin
 """
 
 # Aufgabe a
-train_files = [f'Bilder/Flur/Flur{i + 1}.jpg' for i in range(20)] + \
-              [f'Bilder/Labor/Labor{i + 1}.jpg' for i in range(20)] + \
-              [f'Bilder/Professorenbuero/Professorenbuero{i + 1}.jpg' for i in range(20)] + \
-              [f'Bilder/Teekueche/Teekueche{i + 1}.jpg' for i in range(20)]
+import os
+import random
+import math
+import re
+random.seed(322)
 
-test_files = [f'Bilder/Flur/Flur{i + 21}.jpg' for i in range(5)] + \
-             [f'Bilder/Labor/Labor{i + 21}.jpg' for i in range(5)] + \
-             [f'Bilder/Professorenbuero/Professorenbuero{i + 21}.jpg' for i in range(5)] + \
-             [f'Bilder/Teekueche/Teekueche{i + 21}.jpg' for i in range(5)]
+training_path_list = []     # Gleiche Liste aus Aufgabe 2
+test_path_list = []         # Gleiche Liste aus Aufgabe 2
+validation_path_list = []   # ["./pfad/zu/bildZ.png","./pfad/zu/bildY.png",...]
 
-assert len(train_files) + len(test_files) == 100
+
+RE_FILE = re.compile(r"[a-zA-Z]+\d+\.jpg")
+
+
+def create_data_split(folder, label: int, train_percent, test_percent, val_percent, base_only=True):
+    """
+    :param base_only: Only include base files, no augmented ones
+    """
+
+    assert train_percent + test_percent == 1, "train and test percentages dont add up to 1.0"
+    assert 0 < val_percent <= 1, "validation percent must be within [0..1]"
+    files = os.listdir(folder)
+    if base_only:
+        files = [f for f in files if RE_FILE.match(f)]
+    random.shuffle(files)
+
+    train_cnt = math.ceil(len(files) * train_percent)
+    val_cnt = math.ceil(train_cnt * val_percent)
+    train_files = [f'{folder}/{f}' for f in files[:train_cnt]]
+    test_files = [f'{folder}/{f}' for f in files[train_cnt:]]
+    valid_files = train_files[:val_cnt]
+
+    random.shuffle(train_files)
+    random.shuffle(test_files)
+    random.shuffle(valid_files)
+
+    return list(zip(train_files, [label] * len(train_files))), \
+           list(zip(test_files, [label] * len(test_files))), \
+           list(zip(valid_files, [label] * len(valid_files)))
+
+
+def create_full_data_split(base_only=True):
+    train_percent = 0.7
+    test_percent = 0.3
+    val_percent = 0.3
+
+    flur_train, flur_test, flur_val = create_data_split('Bilder/Flur', 0, train_percent, test_percent, val_percent, base_only)
+    labo_train, labo_test, labo_val = create_data_split('Bilder/Labor', 1, train_percent, test_percent, val_percent, base_only)
+    prof_train, prof_test, prof_val = create_data_split('Bilder/Professorenbuero', 2, train_percent, test_percent, val_percent, base_only)
+    teek_train, teek_test, teek_val = create_data_split('Bilder/Teekueche', 3, train_percent, test_percent, val_percent, base_only)
+
+
+    train_files = flur_train + labo_train + prof_train + teek_train
+    test_files  = flur_test + labo_test + prof_test + teek_test
+    val_files   = flur_val + labo_val + prof_val + teek_val
+
+    random.shuffle(train_files)
+    random.shuffle(test_files)
+    random.shuffle(val_files)
+
+    train_batch_len = (len(train_files) // 16) * 16
+    test_batch_len = (len(test_files) // 16) * 16
+    val_batch_len = (len(val_files) // 16) * 16
+
+    return (
+        [f[0] for f in train_files][:train_batch_len],
+        [f[1] for f in train_files][:train_batch_len],
+        [f[0] for f in test_files][:test_batch_len],
+        [f[1] for f in test_files][:test_batch_len],
+        [f[0] for f in val_files][:val_batch_len],
+        [f[1] for f in val_files][:val_batch_len],
+    )
+
+
+train_files, _, test_files, y_test, _, _ = create_full_data_split()
 
 
 # Aufgabe b
