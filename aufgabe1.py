@@ -1,11 +1,7 @@
-import math
-from typing import List, Any, Optional, Tuple
-from queue import Queue, PriorityQueue
+from typing import List, Optional, Tuple
+from queue import  PriorityQueue
 from PIL import Image, ImageDraw
 import numpy as np
-
-# (3, 17) -> (2, 17) -> (1, 17) -> (1, 16) -> (1, 15) -> (1, 14) -> (1, 13) -> (2, 13) -> (3, 13) -> (3, 12) -> (3, 11) -> (3, 10) -> (3, 9) -> (3, 8) -> (3, 7) -> (3, 6) -> (3, 5) -> (3, 4) -> (3, 3) -> (2, 3) -> (1, 3)
-# (3, 17) -> (2, 17) -> (1, 17) -> (1, 16) -> (1, 15) -> (1, 14) -> (1, 13) -> (2, 13) -> (3, 13) -> (3, 12) -> (3, 11) -> (3, 10) -> (3, 9) -> (3, 8) -> (3, 7) -> (2, 7) -> (1, 7) -> (1, 6) -> (1, 5) -> (1, 4) -> (1, 3)
 
 
 ROW_COL_CNT = 21
